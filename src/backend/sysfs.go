@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	. "lumen/src/utils/errs"
+	. "lumen/src/utils/tmpstore"
 )
 
 type sysfs struct {
@@ -28,13 +29,16 @@ func loadSysfs() (b Backend, err error) {
 	return &sysfs{dir: dirs[0], max: m}, nil
 }
 
-func (s *sysfs) Name() string { return "sysfs:" + filepath.Base(s.dir) }
+func (s *sysfs) id() string   { return filepath.Base(s.dir) }
+func (s *sysfs) Name() string { return "sysfs:" + s.id() }
 
 func (s *sysfs) Get() (p int, err error) {
 	defer Catch(&err)
 
 	v := readInt(s.dir + "/brightness")
-	return (v*100 + s.max/2) / s.max, nil
+	p = (v*100 + s.max/2) / s.max
+	WriteTmp(s.id(), "cur", p)
+	return p, nil
 }
 
 func (s *sysfs) Set(p int) (err error) {
@@ -42,5 +46,6 @@ func (s *sysfs) Set(p int) (err error) {
 
 	raw := strconv.Itoa(p * s.max / 100)
 	TryE(os.WriteFile(s.dir+"/brightness", []byte(raw), 0644))
+	WriteTmp(s.id(), "cur", p)
 	return nil
 }

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	. "lumen/src/utils/errs"
+	. "lumen/src/utils/tmpstore"
 )
 
 type ddc struct {
@@ -45,13 +45,18 @@ func openDDC(link, name string) (d *ddc, err error) {
 		TryE(e)
 	}
 
-	x := &ddc{f: f, name: name}
+	x := &ddc{f: f, name: name, max: ReadTmp(name, "max")}
+	if x.max > 0 {
+		return x, nil
+	}
+
 	_, m, e := x.vcp()
 	if e != nil || m <= 0 {
 		f.Close()
 		TryE(errors.New("no DDC response"))
 	}
 	x.max = m
+	WriteTmp(name, "max", m)
 	return x, nil
 }
 
@@ -61,7 +66,6 @@ func (d *ddc) vcp() (cur, max int, err error) {
 	b := []byte{0x51, 0x82, 0x01, 0x10, 0}
 	b[4] = 0x6E ^ b[0] ^ b[1] ^ b[2] ^ b[3]
 	TryV(d.f.Write(b))
-	time.Sleep(40 * time.Millisecond)
 
 	r := make([]byte, 11)
 	TryV(d.f.Read(r))
@@ -73,14 +77,23 @@ func (d *ddc) vcp() (cur, max int, err error) {
 	return
 }
 
+func (d *ddc) Lock()        { syscall.Flock(int(d.f.Fd()), syscall.LOCK_EX) }
+func (d *ddc) Unlock()      { syscall.Flock(int(d.f.Fd()), syscall.LOCK_UN) }
 func (d *ddc) Name() string { return "ddc:" + d.name }
+
+func (d *ddc) Cached() (int, bool) {
+	c := ReadTmp(d.name, "cur")
+	return c, c > 0
+}
 
 func (d *ddc) Get() (p int, err error) {
 	defer Catch(&err)
 
 	cur, max, e := d.vcp()
 	TryE(e)
-	return (cur*100 + max/2) / max, nil
+	p = (cur*100 + max/2) / max
+	WriteTmp(d.name, "cur", p)
+	return p, nil
 }
 
 func (d *ddc) Set(p int) (err error) {
@@ -90,5 +103,7 @@ func (d *ddc) Set(p int) (err error) {
 	b := []byte{0x51, 0x84, 0x03, 0x10, byte(v >> 8), byte(v), 0}
 	b[6] = 0x6E ^ b[0] ^ b[1] ^ b[2] ^ b[3] ^ b[4] ^ b[5]
 	TryV(d.f.Write(b))
+
+	WriteTmp(d.name, "cur", p)
 	return nil
 }

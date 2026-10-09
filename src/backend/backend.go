@@ -40,6 +40,11 @@ func Resolve(b Backend, in string) int {
 	v, e := strconv.Atoi(strings.TrimSuffix(in, "%"))
 	n := TryV(v, e, errors.New("invalid value: "+in))
 	if rel {
+		if c, ok := b.(interface{ Cached() (int, bool) }); ok {
+			if v, ok := c.Cached(); ok {
+				return min(max(n+v, 0), 100)
+			}
+		}
 		n += TryV(b.Get())
 	}
 	return min(max(n, 0), 100)

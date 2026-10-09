@@ -24,6 +24,14 @@ func Run(opt parser.Options) {
 
 	b := backend.Load(opt.Monitor)
 
+	if l, ok := b.(interface {
+		Lock()
+		Unlock()
+	}); ok {
+		l.Lock()
+		defer l.Unlock()
+	}
+
 	switch opt.Action {
 	case parser.Get:
 		fmt.Println(TryV(b.Get()))
@@ -31,6 +39,6 @@ func Run(opt parser.Options) {
 	case parser.Set:
 		p := backend.Resolve(b, opt.Value)
 		TryE(b.Set(p))
-		log.Info(log.Title(b.Name()),"%d%%", p)
+		log.Info(log.Title(b.Name()), "%d%%", p)
 	}
 }
